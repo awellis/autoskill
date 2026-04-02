@@ -37,3 +37,15 @@ notes/*
 # Envonment variables
 /.env
 /.Renviron
+
+# R package artifacts
+*.Rcheck/
+*.tar.gz
+src/*.o
+src/*.so
+src/*.dll
+inst/doc/
+
+# Stan compilation cache
+*.stan.exe
+*.stan.hpp
