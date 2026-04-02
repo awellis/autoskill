@@ -1,0 +1,63 @@
+test_that("model_config bundles spec and structure", {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  spec <- model_spec()
+  struc <- loading_structure(taxonomy, assignments, items)
+  config <- model_config(spec, struc)
+  expect_s3_class(config, "model_config")
+  expect_s3_class(config$spec, "model_spec")
+  expect_s3_class(config$structure, "loading_structure")
+  expect_null(config$edge_prior)
+})
+
+test_that("model_config requires edge_prior for dag mode", {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  spec <- model_spec(structural = "dag")
+  struc <- loading_structure(taxonomy, assignments, items)
+  expect_error(model_config(spec, struc), "edge_prior")
+})
+
+test_that("model_config accepts edge_prior for dag mode", {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  spec <- model_spec(structural = "dag")
+  struc <- loading_structure(taxonomy, assignments, items)
+  ep <- edge_prior(from = c("skill_1", "skill_1"), to = c("skill_2", "skill_3"), prob = c(0.8, 0.6))
+  config <- model_config(spec, struc, edge_prior = ep)
+  expect_s3_class(config, "model_config")
+  expect_s3_class(config$edge_prior, "edge_prior")
+})
+
+test_that("config_hash is stable", {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  spec <- model_spec()
+  struc <- loading_structure(taxonomy, assignments, items)
+  config <- model_config(spec, struc)
+  h1 <- config_hash(config)
+  h2 <- config_hash(config)
+  expect_equal(h1, h2)
+})
+
+test_that("config_hash differs for different specs", {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  struc <- loading_structure(taxonomy, assignments, items)
+  c1 <- model_config(model_spec(structural = "independent"), struc)
+  c2 <- model_config(model_spec(structural = "correlated"), struc)
+  expect_false(config_hash(c1) == config_hash(c2))
+})
+
+test_that("print.model_config produces output", {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  config <- model_config(model_spec(), loading_structure(taxonomy, assignments, items))
+  expect_output(print(config), "model_config")
+})
