@@ -6,7 +6,8 @@ library(tidyverse)
 
 skill_type <- type_object(
   name = type_string("Short descriptive name for the skill"),
-  description = type_string("What this skill involves, in one sentence")
+  description = type_string("What this skill involves, in one sentence"),
+  is_new = type_boolean("TRUE if this skill was newly proposed, FALSE if from the known set")
 )
 
 assignment_type <- type_object(
@@ -20,17 +21,39 @@ assignment_type <- type_object(
 
 # Prompt construction -----------------------------------------------------
 
-build_taxonomy_prompt <- function(items, context = NULL, n_skills = NULL) {
+build_taxonomy_prompt <- function(items, known_skills = NULL,
+                                  context = NULL, n_skills = NULL) {
   item_list <- items |>
     glue::glue_data("- {item_id}: {text}") |>
     str_c(collapse = "\n")
 
+  has_known <- !is.null(known_skills) && nrow(known_skills) > 0
+
+  known_block <- if (has_known) {
+    skill_list <- known_skills |>
+      glue::glue_data("- {name}: {description}") |>
+      str_c(collapse = "\n")
+
+    str_c(
+      "The following skills are already known. Use these wherever they apply.",
+      "Only propose a new skill if an item genuinely requires something not covered by the known set.",
+      "Mark each skill with is_new = FALSE if from this list, is_new = TRUE if newly proposed.",
+      "",
+      "Known skills:",
+      skill_list,
+      sep = "\n"
+    )
+  }
+
   parts <- c(
     "Analyze these test items and identify the distinct latent skills required to solve them.",
     if (!is.null(context)) glue::glue("Context: {context}"),
-    if (!is.null(n_skills)) glue::glue("Propose approximately {n_skills} skills."),
-    "Skills should be at a consistent level of granularity.",
-    "Too broad (e.g. 'math') is useless. Too narrow (e.g. 'multiplying 3-digit numbers') overfits.",
+    if (!is.null(n_skills) && !has_known) glue::glue("Propose approximately {n_skills} skills."),
+    known_block,
+    if (!has_known) c(
+      "Skills should be at a consistent level of granularity.",
+      "Too broad (e.g. 'math') is useless. Too narrow (e.g. 'multiplying 3-digit numbers') overfits."
+    ),
     "Each item may require multiple skills.",
     "",
     "Items:",
@@ -65,8 +88,9 @@ build_assignment_prompt <- function(items, taxonomy) {
 
 # Core functions ----------------------------------------------------------
 
-propose_taxonomy <- function(chat, items, context = NULL, n_skills = NULL) {
-  prompt <- build_taxonomy_prompt(items, context, n_skills)
+propose_taxonomy <- function(chat, items, known_skills = NULL,
+                             context = NULL, n_skills = NULL) {
+  prompt <- build_taxonomy_prompt(items, known_skills, context, n_skills)
 
   chat$chat_structured(
     prompt,
@@ -88,14 +112,14 @@ assign_skills <- function(chat, items, taxonomy) {
     select(item_id, skill_id, skill_name)
 }
 
-propose_skills <- function(items, context = NULL, n_skills = NULL,
-                           model = "claude-sonnet-4-20250514") {
+propose_skills <- function(items, known_skills = NULL, context = NULL,
+                           n_skills = NULL, model = "claude-sonnet-4-20250514") {
   chat <- chat_anthropic(
     system_prompt = "You are an expert in cognitive task analysis and psychometrics.",
     model = model
   )
 
-  taxonomy <- propose_taxonomy(chat, items, context, n_skills)
+  taxonomy <- propose_taxonomy(chat, items, known_skills, context, n_skills)
   assignments <- assign_skills(chat, items, taxonomy)
 
   list(taxonomy = taxonomy, assignments = assignments)

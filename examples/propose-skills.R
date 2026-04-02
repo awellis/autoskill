@@ -18,51 +18,42 @@ items <- tibble(
 )
 
 
-# Run skill proposer ------------------------------------------------------
+# Open discovery (no known skills) ----------------------------------------
 
-result <- propose_skills(
+result_open <- propose_skills(
   items,
   context = "Middle school mathematics assessment",
   n_skills = 3
 )
 
+result_open$taxonomy
+result_open$assignments
 
-# Inspect results ---------------------------------------------------------
-
-result$taxonomy
-# Expected output (will vary):
-# # A tibble: 3 x 3
-#   skill_id name                    description
-#   <chr>    <chr>                   <chr>
-# 1 skill_1  Linear equations        Solving and manipulating equations with one unknown
-# 2 skill_2  Fraction arithmetic     Adding, converting, and computing with fractions
-# 3 skill_3  Word problem modeling   Translating text descriptions into mathematical expressions
-
-result$assignments
-# Expected output (will vary):
-# # A tibble: ~12 x 3
-#   item_id skill_id skill_name
-#   <chr>   <chr>    <chr>
-# 1 item_1  skill_1  Linear equations
-# 2 item_3  skill_2  Fraction arithmetic
-# 3 item_4  skill_1  Linear equations
-# 4 item_4  skill_3  Word problem modeling
-# ...
+loading_open <- to_loading_matrix(result_open$assignments, items, result_open$taxonomy)
+format_loading_matrix(loading_open)
 
 
-# View as loading matrix --------------------------------------------------
+# Constrained discovery (known skills, novel items) -----------------------
 
-loading <- to_loading_matrix(result$assignments, items, result$taxonomy)
-format_loading_matrix(loading)
-# Expected output (will vary):
-# # A tibble: 8 x 4
-#   text                            `Linear equations` `Fraction arithmetic` `Word problem modeling`
-#   <chr>                           <chr>              <chr>                 <chr>
-# 1 Solve: 3x + 5 = 20             x                  .                     .
-# 2 Simplify: 2(x + 3) - x         x                  .                     .
-# 3 Compute: 1/2 + 1/3             .                  x                     .
-# 4 A train goes x km/h for 3h...  x                  .                     x
-# 5 Factor: x^2 - 9                x                  .                     .
-# 6 Convert 3/4 to a decimal       .                  x                     .
-# 7 Two numbers sum to 20...       x                  .                     x
-# 8 Compute: 3/8 + 5/8             .                  x                     .
+known_skills <- tibble(
+  name = c("Linear equations", "Fraction arithmetic"),
+  description = c(
+    "Solving and rearranging equations with one unknown",
+    "Adding, converting, and computing with fractions and decimals"
+  )
+)
+
+result_constrained <- propose_skills(
+  items,
+  known_skills = known_skills,
+  context = "Middle school mathematics assessment"
+)
+
+# Taxonomy now shows which skills are known vs. newly proposed
+result_constrained$taxonomy
+result_constrained$taxonomy |> filter(is_new)
+
+loading_constrained <- to_loading_matrix(
+  result_constrained$assignments, items, result_constrained$taxonomy
+)
+format_loading_matrix(loading_constrained)
