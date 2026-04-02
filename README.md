@@ -1,33 +1,53 @@
 # autoskill
 
-LLM-driven discovery of latent skill structure in student response data.
+LLM-driven discovery of latent knowledge component structure in student response data.
 
-The core model is a **confirmatory factor model with binary outcomes**: student responses (correct/incorrect) follow a Bernoulli distribution with a logit link, where continuous latent skill factors per student are mapped to item response probabilities through a factor loading matrix. The structure of this loading matrix — which entries are nonzero, how many latent dimensions exist — defines the skill structure hypothesis.
+Given a fixed dataset of student responses to test items, autoskill discovers which set of latent knowledge components (KCs) best accounts for the data. It operates in two modes:
 
-An LLM proposes these structural hypotheses (the sparsity pattern of the loading matrix), encodes them as Stan programs, and an automated evaluation pipeline scores them with Bayesian model comparison. The loop iterates: propose, validate, fit, compare, reflect, refine.
+- **Factor analysis mode:** Discover the measurement model — which KCs exist, which items load on which KCs, and how KCs correlate. No directed dependencies among KCs.
+- **SEM mode:** Discover both the measurement model and the structural model — a DAG of directed causal dependencies among KCs, estimated on the latent scale (logit or probit).
+
+Factor analysis mode is a special case of SEM mode (the DAG has no edges). The user selects the mode. In both modes, an LLM proposes structural hypotheses, encodes them as Stan programs, and an automated evaluation pipeline scores them with Bayesian model comparison. The loop iterates: propose, validate, fit, compare, reflect, refine.
 
 ## The model
 
-Student *j*'s response to item *i* is modeled as:
+The observation model is a **multilevel IRT model**. Student *j*'s response to item *i* is:
 
 ```
-y_ij ~ Bernoulli(logit⁻¹(alpha_i + Lambda_i * theta_j))
+y_ij ~ Bernoulli(link⁻¹(alpha_i + Lambda_i * theta_j))
 ```
 
 where:
 
-- `theta_j` is a vector of continuous latent skill factors for student *j*
-- `Lambda` is the factor loading matrix (item discriminations)
+- `theta_j` is a vector of continuous latent KC factors for student *j*, drawn from a population distribution (partial pooling across students)
+- `Lambda` is the factor loading matrix (measurement model: which items load on which KCs)
 - `alpha_i` is the item intercept (easiness)
+- `link` is logit or probit (user setting)
 
-The **loading matrix structure** is the search target. A fully unconstrained Lambda is unidentified without rotation constraints (the standard factor analysis problem). The LLM proposes a sparsity pattern — which items load on which skills — that constrains Lambda and makes the model identified:
+### Measurement model (both modes)
+
+The **loading matrix structure** is the first search target. The LLM proposes a sparsity pattern — which items load on which KCs:
 
 ```
-Lambda[i,k] = 0        if item i does not require skill k
-Lambda[i,k] = free     if item i requires skill k (estimate the loading)
+Lambda[i,k] = 0        if item i does not require KC k
+Lambda[i,k] = free     if item i requires KC k (estimate the loading)
 ```
 
-This is equivalent to proposing which paths exist in a structural equation model. The number of latent dimensions and the sparsity pattern together define the structural hypothesis.
+### Structural model (SEM mode only)
+
+In SEM mode, the LLM also proposes a **DAG among KCs** — directed causal paths on the latent scale:
+
+```
+theta_jk = sum(B[k,l] * theta_jl for l in parents(k)) + epsilon_jk
+```
+
+where `B` is a matrix of structural coefficients (nonzero only where the DAG has an edge) and `epsilon_jk` are residuals. The DAG encodes hypotheses like "algebraic manipulation causally depends on number sense" — meaning a student's algebra skill is partly determined by their number sense.
+
+Factor analysis mode sets `B = 0` (no structural paths) and estimates a free correlation matrix among KCs instead.
+
+### Temporal structure
+
+Initially, temporal structure is ignored. Student responses are treated as a batch — exchangeable given the student's KC vector. Temporal dynamics (learning curves, skill acquisition over attempts) are a future extension.
 
 ### Example
 
@@ -96,13 +116,21 @@ How latent skills map to item responses. The loading matrix sparsity pattern (fr
 
 ### Block 2: Structural model
 
-How latent skills relate to each other.
+How latent KCs relate to each other. The available options depend on the mode.
+
+**Factor analysis mode:**
 
 | Option | Description |
 |---|---|
 | **independent** | `theta_jk ~ Normal(0, 1)` independently. Simplest, most identified. |
-| **correlated** | `theta_j ~ MVN(0, Sigma)` with `Sigma = L * L'`, `L ~ LKJ_cholesky(eta)`. Estimates skill correlations. |
-| **hierarchical** | One or more higher-order factors feed into domain-specific skills. E.g., general math ability -> algebra, fractions. `theta_j = B * phi_j + epsilon_j` where `phi_j` are higher-order factors. |
+| **correlated** | `theta_j ~ MVN(0, Sigma)` with `Sigma = L * L'`, `L ~ LKJ_cholesky(eta)`. Estimates KC correlations but no directed dependencies. |
+
+**SEM mode:**
+
+| Option | Description |
+|---|---|
+| **dag** | `theta_jk = sum(B[k,l] * theta_jl for l in parents(k)) + epsilon_jk`. The LLM proposes both the DAG structure (which entries of B are nonzero) and the loading matrix. B is constrained to be acyclic. Residuals `epsilon_jk ~ Normal(0, sigma_k)`. |
+| **hierarchical** | A special case of DAG: higher-order factors feed into domain-specific KCs. E.g., general math ability -> algebra, fractions. `theta_j = B * phi_j + epsilon_j` where `phi_j` are higher-order factors. |
 
 ### Block 3: Population model
 
@@ -126,10 +154,12 @@ A model specification is a choice from each block:
 
 ```
 model_spec(
+  mode        = "sem",          # or "factor_analysis"
   measurement = "linear",
-  structural  = "correlated",
+  structural  = "dag",          # factor_analysis mode: "independent" or "correlated"
   population  = "single",
-  item        = "basic"
+  item        = "basic",
+  link        = "logit"         # or "probit"
 )
 ```
 
@@ -160,10 +190,30 @@ The Stan code generator composes the blocks. The LLM searches over both the load
 
 ## Incremental strategy
 
-1. **Phase 1 — Skill proposer.** Build the semantic component: LLM reads item text and proposes a loading structure. No student data, no inference. Evaluate by comparing LLM-proposed structures against expert-labeled skill maps where available.
-2. **Phase 2 — Measurement model search.** Fix the block configuration to `measurement = "linear", structural = "independent", population = "single", item = "basic"`. The LLM searches only over loading matrix sparsity patterns and number of latent dimensions. This is the simplest model family — standard confirmatory factor analysis with binary outcomes.
-3. **Phase 3 — Block configuration search.** Open up the composable blocks. The LLM searches over both the loading matrix and the block configuration (correlated vs. hierarchical factors, slip/guess, grouped populations). Each combination is pre-validated, so the search space expands without sacrificing inference reliability.
-4. **Phase 4 — Free-form Stan.** For model structures that can't be expressed as block combinations, the LLM writes raw Stan code. This is the fully open-ended search from the original proposal. SBC becomes the primary safety net.
+1. **Phase 1 — Skill proposer.** Build the semantic component: LLM reads item text and proposes a loading structure (and optionally, in SEM mode, a DAG among KCs). No student data, no inference.
+2. **Phase 2 — Factor analysis.** Fix mode to factor analysis. The LLM searches over loading matrix sparsity patterns, number of latent dimensions, and correlation structure (independent vs. correlated KCs). Multilevel IRT observation model throughout.
+3. **Phase 3 — Structural equation models.** Switch to SEM mode. The LLM searches over both the loading matrix and the DAG among KCs. This is causal discovery on the latent scale, constrained by the LLM's semantic understanding and scored by LOO.
+4. **Phase 4 — Block configuration search.** Open up remaining composable blocks (interaction terms, slip/guess, grouped populations, link function). The search space expands without sacrificing inference reliability.
+5. **Phase 5 — Free-form Stan.** For model structures that can't be expressed as block combinations, the LLM writes raw Stan code. SBC becomes the primary safety net.
+
+## Literature
+
+### Model comparison and diagnostics
+
+- Vehtari, Gelman, Gabry (2017). Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC. *Statistics and Computing*, 27(5), 1413-1432. The PSIS-LOO method used for model comparison in the optimization loop.
+- Vehtari, Simpson, Gelman, Yao, Gabry (2024). Pareto smoothed importance sampling. *Journal of Machine Learning Research*, 25(72), 1-58. Theory behind Pareto k diagnostics for flagging unreliable LOO estimates.
+- Talts, Betancourt, Simpson, Vehtari, Gelman (2018). Validating Bayesian inference algorithms with simulation-based calibration. arXiv:1804.06788. The SBC method used for identifiability checking before fitting real data.
+- Kallioinen, Paananen, Burkner, Vehtari (2024). Detecting and diagnosing prior and likelihood sensitivity with power-scaling. *Statistics and Computing*, 34, 57. The priorsense method.
+
+### Knowledge structure discovery
+
+- Fitzpatrick, Heusser, Manning (2026). Text embedding models yield detailed conceptual knowledge maps derived from short multiple-choice quizzes. [PsyArXiv](https://osf.io/preprints/psyarxiv/dh3q2). ([code](https://github.com/ContextLab/mapper)). A different approach to the same problem: embeds items and knowledge into a shared vector space, then interpolates knowledge across the map with a Gaussian process from quiz responses. Uses adaptive item selection and recommends learning resources based on identified gaps.
+
+
+### LLM-driven model discovery
+
+- AutoStan (2026). Autonomous Bayesian model improvement via predictive feedback. [arXiv:2603.27766](https://arxiv.org/abs/2603.27766). A CLI coding agent autonomously writes and iteratively improves Stan code, evaluated by held-out NLPD and sampler diagnostics. Discovers hierarchical partial pooling, correlated random effects, mixture components. The closest existing work to autoskill's structure optimizer, but general-purpose rather than domain-specific, and without SBC, composable blocks, or a semantic skill proposer.
+- Lu et al. (2024). The AI Scientist: Towards fully automated open-ended scientific discovery. arXiv:2408.06292. The autoresearch pattern: LLM generates hypotheses, automated experiment, automated evaluation, LLM refines.
 
 ## Data
 
