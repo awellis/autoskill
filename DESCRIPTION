@@ -1,0 +1,40 @@
+Package: autoskill
+Title: LLM-Driven Discovery of Latent Knowledge Component Structure
+Version: 0.1.0
+Authors@R: person("Andrew", "Ellis", role = c("aut", "cre"),
+                  email = "andrew.ellis@unibe.ch")
+Description: Discovers latent knowledge component (KC) structures in student
+    response data using LLM-driven hypothesis generation and Bayesian model
+    comparison. Combines cognitive task analysis via large language models with
+    multilevel IRT evaluation via Stan.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.1.0)
+Imports:
+    tibble,
+    dplyr,
+    tidyr,
+    purrr,
+    stringr,
+    glue,
+    rlang (>= 1.0.0),
+    cli,
+    ellmer,
+    cmdstanr,
+    posterior,
+    loo,
+    jsonlite
+Suggests:
+    testthat (>= 3.0.0),
+    SBC,
+    bayesplot,
+    priorsense,
+    brms,
+    withr,
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+Additional_repositories: https://stan-dev.r-universe.dev/

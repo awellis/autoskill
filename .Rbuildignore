@@ -1,0 +1,10 @@
+^\.claude$
+^\.remember$
+^\.env$
+^\.Renviron$
+^notes$
+^examples$
+^LICENSE\.md$
+^\.github$
+^docs$
+^_pkgdown\.yml$
