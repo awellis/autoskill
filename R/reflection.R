@@ -73,21 +73,33 @@ refinement_output_type <- function() {
 #' Build model_config from LLM refinement response
 #' @noRd
 build_config_from_refinement <- function(result, items) {
+  # ellmer may return arrays-of-objects as data frames or lists-of-lists
+  # depending on the response structure. Handle both.
+  skills_list <- if (is.data.frame(result$skills)) {
+    purrr::transpose(result$skills)
+  } else {
+    result$skills
+  }
+
   taxonomy <- tibble::tibble(
-    skill_id = result$skills$skill_id,
-    name = result$skills$name,
-    description = result$skills$description,
+    skill_id = purrr::map_chr(skills_list, "skill_id"),
+    name = purrr::map_chr(skills_list, "name"),
+    description = purrr::map_chr(skills_list, "description"),
     is_new = TRUE
   )
 
-  assignments_raw <- result$assignments
-  assignments <- purrr::map_dfr(seq_len(nrow(assignments_raw)), function(i) {
-    row <- assignments_raw[i, ]
-    skill_list <- row$skills[[1]]
+  assignments_list <- if (is.data.frame(result$assignments)) {
+    purrr::transpose(result$assignments)
+  } else {
+    result$assignments
+  }
+
+  assignments <- purrr::map_dfr(assignments_list, function(a) {
+    skill_ids <- if (is.list(a$skills)) unlist(a$skills) else a$skills
     tibble::tibble(
-      item_id = row$item_id,
-      skill_id = skill_list,
-      skill_name = taxonomy$name[match(skill_list, taxonomy$skill_id)]
+      item_id = a$item_id,
+      skill_id = skill_ids,
+      skill_name = taxonomy$name[match(skill_ids, taxonomy$skill_id)]
     )
   })
 
@@ -101,11 +113,16 @@ build_config_from_refinement <- function(result, items) {
   )
 
   ep <- NULL
-  if (result$structural == "dag" && nrow(result$edge_prior) > 0) {
+  edge_list <- if (is.data.frame(result$edge_prior)) {
+    purrr::transpose(result$edge_prior)
+  } else {
+    result$edge_prior
+  }
+  if (result$structural == "dag" && length(edge_list) > 0) {
     ep <- edge_prior(
-      from = result$edge_prior$from,
-      to = result$edge_prior$to,
-      prob = result$edge_prior$prob
+      from = purrr::map_chr(edge_list, "from"),
+      to = purrr::map_chr(edge_list, "to"),
+      prob = purrr::map_dbl(edge_list, "prob")
     )
   }
 
