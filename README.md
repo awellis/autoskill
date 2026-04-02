@@ -53,16 +53,31 @@ If this loading structure is correct, these two students will produce systematic
 
 ## Architecture
 
-The system separates creative work (model structure search) from analytical work (inference and evaluation).
+Two components, usable independently or together.
 
-**Creative step:** An LLM generates Stan models encoding structural hypotheses: the number of latent skill dimensions, the sparsity pattern of the loading matrix, and the form of the structural model (e.g., correlated vs. independent factors, hierarchical structure among skills).
+### Skill proposer
 
-**Evaluation pipeline (R):**
+Given item text (and optionally curriculum standards, learning objectives, or domain context), an LLM performs automated cognitive task analysis in two stages:
+
+1. **Taxonomy.** The LLM reads all items and proposes a skill taxonomy: a list of skills with names, descriptions, and a consistent level of granularity appropriate to the context. This is a reviewable artifact — a teacher or domain expert can edit the skill list before proceeding.
+2. **Assignment.** The LLM assigns each item to the relevant skills from the taxonomy. This is a simpler judgment than inventing the whole structure at once — for each item-skill pair, the LLM decides whether the item requires that skill. Items can load on multiple skills (cross-loadings).
+
+The two-stage decomposition matters. The taxonomy step is where the hard conceptual work happens (what are the skills? how fine-grained?). The assignment step is mechanical by comparison. Separating them means the taxonomy can be reviewed, edited, or provided externally (e.g., from curriculum standards) before any assignments are made.
+
+This component is useful on its own, without any student response data. A teacher building a new test can get a first-pass skill map before any students have taken the test.
+
+### Structure optimizer
+
+Given a loading structure (from the skill proposer or any other source) and student response data, the optimizer evaluates and refines it through a Bayesian model comparison loop:
 
 1. **SBC** — Simulation-based calibration checks whether the proposed model is identifiable before fitting real data. Non-identified models are rejected early, with diagnostics fed back to the LLM.
 2. **Fit** — MCMC via cmdstanr (NUTS). Convergence diagnostics (R-hat, ESS, divergences, E-BFMI) determine whether inference succeeded.
 3. **Compare** — LOO-CV via PSIS-LOO scores out-of-sample predictive performance with a natural complexity penalty. Pareto k diagnostics flag unreliable estimates.
 4. **Reflect** — Structured feedback (poorly predicted items, pathological posteriors, parameter summaries, LOO differences) goes back to the LLM for the next iteration.
+
+### Composition
+
+The skill proposer provides a warm start; the structure optimizer tests whether it holds up against data. The proposer's output is a semantically informed hypothesis. The optimizer's output is an empirically validated one. Together they close the loop between what the items *should* require (semantic analysis) and what the response patterns *actually* support (statistical evidence).
 
 ## Design decisions
 
@@ -89,8 +104,8 @@ The system separates creative work (model structure search) from analytical work
 
 ## Incremental strategy
 
-1. **Phase 1 — Loading matrix sparsity search.** Fix the model framework (confirmatory factor model, Bernoulli/logit, continuous latent factors). The LLM's only degree of freedom is the sparsity pattern of the loading matrix and the number of latent dimensions. Inference is standard and well-understood.
-2. **Phase 2 — Semantic initialization.** Use the LLM's understanding of item text and curriculum standards to generate informed initial loading structures, then optimize with the loop.
+1. **Phase 1 — Skill proposer.** Build the semantic component: LLM reads item text and proposes a loading structure. No student data, no inference. Evaluate by comparing LLM-proposed structures against expert-labeled skill maps where available.
+2. **Phase 2 — Loading matrix sparsity search.** Fix the model framework (confirmatory factor model, Bernoulli/logit, continuous latent factors). Use the skill proposer's output as the initial hypothesis. The optimizer searches over sparsity patterns and number of latent dimensions, scored by LOO.
 3. **Phase 3 — Full structural search.** Expand the search space to include the structural model among latent factors (correlated, hierarchical, higher-order), nonlinear interaction terms, and item-level structure beyond simple loadings.
 
 ## Data
