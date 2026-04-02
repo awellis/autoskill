@@ -39,11 +39,27 @@ The LLM proposes a DAG among KCs with directed paths on the latent scale:
 theta_jk = sum(B[k,l] * theta_jl for l in parents(k)) + epsilon_jk
 ```
 
-`B` encodes structural coefficients (nonzero where the DAG has an edge). The DAG encodes hypotheses like "algebraic manipulation depends on number sense." Factor analysis mode sets `B = 0` and estimates a free correlation matrix instead.
+`B` encodes structural coefficients (nonzero where the DAG has an edge). Factor analysis mode sets `B = 0` and estimates a free correlation matrix instead.
+
+### Prior over DAGs
+
+Observational data alone cannot distinguish between Markov-equivalent DAGs. The LLM's domain knowledge breaks this ambiguity by providing an informative prior over DAG structures.
+
+The prior is specified at the edge level. For each possible directed edge (KC_a -> KC_b), the LLM assigns a probability that the edge exists and a probability for each direction. These compose into a DAG prior by treating edges as approximately independent, with acyclicity enforced computationally.
+
+```r
+edge_prior <- tibble(
+  from = c("number_sense", "number_sense", "algebra"),
+  to   = c("algebra", "fractions", "word_problems"),
+  prob = c(0.85, 0.75, 0.40)
+)
+```
+
+Each judgment is simple, auditable, and revisable. The prior covers the full space of DAGs (any structure has nonzero probability as long as no edge is assigned exactly 0 or 1), so the optimizer is not restricted to a small set of LLM-proposed candidates. The data updates the prior via model comparison: DAGs consistent with both domain knowledge and statistical evidence are preferred.
 
 ### Temporal structure
 
-Ignored initially. Responses are treated as a batch, exchangeable given the student's KC vector. Learning dynamics are a future extension.
+Ignored initially. Responses are treated as a batch, exchangeable given the student's KC vector. Temporal data (attempt sequences) would provide additional evidence for causal direction and is a natural future extension.
 
 ### Example
 
