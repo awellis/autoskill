@@ -6,3 +6,8 @@
 #' @importFrom glue glue
 #' @importFrom stats setNames
 NULL
+
+# Global variable declarations for NSE (tidyverse column references)
+utils::globalVariables(c(
+  "skills", "skill_id", "name", "item_id", "skill_name", "pareto_k"
+))

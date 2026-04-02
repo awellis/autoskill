@@ -53,7 +53,7 @@ print.loading_structure <- function(x, ...) {
 #' Create an edge prior for SEM mode
 #' @param from Character vector of parent skill IDs.
 #' @param to Character vector of child skill IDs.
-#' @param prob Numeric vector of prior probabilities in [0, 1].
+#' @param prob Numeric vector of prior probabilities in \[0, 1\].
 #' @return An S3 object of class `edge_prior`.
 #' @export
 edge_prior <- function(from, to, prob) {

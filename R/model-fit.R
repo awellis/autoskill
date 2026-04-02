@@ -64,7 +64,11 @@ extract_diagnostics <- function(fit) {
 #' @export
 compute_loo <- function(fit) {
   log_lik <- fit$draws("log_lik", format = "matrix")
-  loo::loo(log_lik, r_eff = loo::relative_eff(exp(log_lik)))
+  n_chains <- fit$num_chains()
+  n_iterations <- nrow(log_lik) %/% n_chains
+  chain_id <- rep(seq_len(n_chains), each = n_iterations)
+  r_eff <- loo::relative_eff(exp(log_lik), chain_id = chain_id)
+  loo::loo(log_lik, r_eff = r_eff)
 }
 
 #' Extract parameter summaries mapped to item/skill names
