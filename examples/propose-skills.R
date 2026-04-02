@@ -1,4 +1,4 @@
-source("R/skill_proposer.R")
+source("R/skill-proposer.R")
 
 
 # Define items ------------------------------------------------------------
