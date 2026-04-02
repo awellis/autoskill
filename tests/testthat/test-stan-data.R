@@ -1,0 +1,50 @@
+test_that("prepare_stan_data returns correct base fields", {
+  config <- make_test_config()
+  Y <- matrix(sample(0:1, 100 * 8, replace = TRUE), nrow = 100, ncol = 8)
+  rownames(Y) <- paste0("s_", 1:100)
+  colnames(Y) <- paste0("item_", 1:8)
+  rd <- response_data(Y)
+  stan_data <- prepare_stan_data(rd, config)
+  expect_equal(stan_data$I, 8L)
+  expect_equal(stan_data$J, 100L)
+  expect_equal(stan_data$K, 3L)
+  expect_equal(stan_data$N_loadings, 10L)
+  expect_equal(length(stan_data$loading_item), 10L)
+  expect_equal(length(stan_data$loading_skill), 10L)
+  expect_true(stan_data$N_obs > 0)
+})
+
+test_that("prepare_stan_data adds DAG fields for dag structural", {
+  config <- make_test_config(structural = "dag")
+  Y <- matrix(sample(0:1, 100 * 8, replace = TRUE), nrow = 100, ncol = 8)
+  rownames(Y) <- paste0("s_", 1:100)
+  colnames(Y) <- paste0("item_", 1:8)
+  rd <- response_data(Y)
+  stan_data <- prepare_stan_data(rd, config)
+  expect_true("N_edges" %in% names(stan_data))
+  expect_true("edge_from" %in% names(stan_data))
+  expect_true("edge_to" %in% names(stan_data))
+  expect_true("topo_order" %in% names(stan_data))
+})
+
+test_that("prepare_stan_data adds interaction fields", {
+  config <- make_test_config(measurement = "interaction")
+  Y <- matrix(sample(0:1, 100 * 8, replace = TRUE), nrow = 100, ncol = 8)
+  rownames(Y) <- paste0("s_", 1:100)
+  colnames(Y) <- paste0("item_", 1:8)
+  rd <- response_data(Y)
+  stan_data <- prepare_stan_data(rd, config)
+  expect_true("N_interactions" %in% names(stan_data))
+})
+
+test_that("prepare_stan_data handles missing data by dropping observations", {
+  Y <- matrix(sample(0:1, 50 * 8, replace = TRUE), nrow = 50, ncol = 8)
+  Y[1, 1] <- NA
+  Y[2, 3] <- NA
+  rownames(Y) <- paste0("s_", 1:50)
+  colnames(Y) <- paste0("item_", 1:8)
+  rd <- response_data(Y)
+  config <- make_test_config()
+  stan_data <- prepare_stan_data(rd, config)
+  expect_equal(stan_data$N_obs, 50 * 8 - 2)
+})
