@@ -55,3 +55,31 @@ skip_if_no_cmdstan <- function() {
     "CmdStan not available"
   )
 }
+
+# Helper to build a minimal config for testing blocks and generator
+make_test_config <- function(measurement = "linear",
+                             structural = "independent",
+                             population = "single",
+                             item = "basic",
+                             link = "logit") {
+  items <- make_test_items()
+  taxonomy <- make_test_taxonomy()
+  assignments <- make_test_assignments()
+  struc <- loading_structure(taxonomy, assignments, items)
+  spec <- model_spec(
+    measurement = measurement,
+    structural = structural,
+    population = population,
+    item = item,
+    link = link
+  )
+  ep <- NULL
+  if (structural == "dag") {
+    ep <- edge_prior(
+      from = c("skill_1", "skill_1"),
+      to = c("skill_2", "skill_3"),
+      prob = c(0.8, 0.6)
+    )
+  }
+  model_config(spec, struc, edge_prior = ep)
+}
