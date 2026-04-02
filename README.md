@@ -29,6 +29,28 @@ Lambda[i,k] = free     if item i requires skill k (estimate the loading)
 
 This is equivalent to proposing which paths exist in a structural equation model. The number of latent dimensions and the sparsity pattern together define the structural hypothesis.
 
+### Example
+
+Six items on a math test. The LLM hypothesizes two latent skills: **algebra** and **word problem comprehension**.
+
+| Item | Algebra | Word problems |
+|---|---|---|
+| Solve 3x + 5 = 20 | lambda_11 | 0 |
+| Simplify 2(x + 3) - x | lambda_21 | 0 |
+| "You have $11, apples cost $2. How many can you buy?" | 0 | lambda_32 |
+| "A train goes x km/h for 3h, covering 180 km. Find x." | lambda_41 | lambda_42 |
+| Factor x^2 - 9 | lambda_51 | 0 |
+| "Two numbers sum to 20, differ by 4. Find them." | lambda_61 | lambda_62 |
+
+The zeros are the hypothesis. Items 1, 2, 5 require only algebra. Item 3 requires only word problem comprehension. Items 4 and 6 require both.
+
+Now consider two students:
+
+- **Student A** (theta = [1.5, -1.0]): strong algebra, weak word problems. Gets items 1, 2, 5 right easily. Struggles with item 3. Items 4 and 6 could go either way — the algebra loading helps, the word problem loading hurts.
+- **Student B** (theta = [-0.5, 1.5]): weak algebra, strong word problems. Opposite pattern.
+
+If this loading structure is correct, these two students will produce systematically different response patterns that a single-factor IRT model cannot explain. The LLM's job is to discover that this two-factor structure (and this specific sparsity pattern) fits the data better than alternatives — maybe a one-factor model, maybe three factors, maybe items 4 and 6 load differently.
+
 ## Architecture
 
 The system separates creative work (model structure search) from analytical work (inference and evaluation).
@@ -50,6 +72,8 @@ The system separates creative work (model structure search) from analytical work
 
 **R as the evaluation engine.** The analytical stack is written once in R and reused across all proposed models. R is where the methodological developers work (Vehtari, Gabry, Bürkner, Betancourt), and the tooling reflects that.
 
+**R as the orchestration language.** The outer loop (call LLM API, compile Stan model, run diagnostics, format feedback, repeat) is also R. The bottleneck is Stan inference (minutes per iteration), not orchestration overhead, so language speed is irrelevant. Keeping everything in one language avoids cross-runtime serialization and environment management. LLM structured output is handled via tool use in the Anthropic API (define a tool schema, get validated JSON back), which works from any language — no need for Python-specific frameworks like PydanticAI. Stan's own compiler provides a better validation loop than JSON schema: if the LLM generates invalid Stan code, the compiler error is fed back directly.
+
 ## Tech stack
 
 | Package | Role |
@@ -61,6 +85,7 @@ The system separates creative work (model structure search) from analytical work
 | [posterior](https://mc-stan.org/posterior/) | Draws format, convergence summaries, ESS, R-hat |
 | [priorsense](https://n-kall.github.io/priorsense/) | Power-scaling sensitivity analysis |
 | [brms](https://paul-buerkner.github.io/brms/) | Baseline IRT/multilevel models for benchmarking |
+| [ellmer](https://ellmer.tidyverse.org/) | LLM API interface for R (Anthropic, OpenAI, etc.) |
 
 ## Incremental strategy
 
