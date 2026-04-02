@@ -33,3 +33,4 @@ JuliaLocalPreferences.toml
 # Local folders
 notes/*
 .remember/*
+/.Renviron
