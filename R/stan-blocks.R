@@ -108,21 +108,21 @@ stan_measurement_linear <- function(config) {
 stan_measurement_interaction <- function(config) {
   frag <- stan_measurement_linear(config)
 
-  frag$data <- paste0(frag$data, glue("
+  frag$data <- paste0(frag$data, "\n", glue("
   int<lower=0> N_interactions;
   array[N_interactions] int<lower=1,upper=I> interact_item;
   array[N_interactions] int<lower=1,upper=K> interact_skill1;
   array[N_interactions] int<lower=1,upper=K> interact_skill2;
 "))
 
-  frag$parameters <- paste0(frag$parameters, glue("
+  frag$parameters <- paste0(frag$parameters, "\n", glue("
   vector[N_interactions] gamma;
 "))
 
   frag$model <- paste0(glue("
   // Interaction priors
   gamma ~ normal(0, 1);
-"), frag$model)
+"), "\n", frag$model)
 
   frag
 }

@@ -12,6 +12,9 @@ collapse_stan_lists <- function(...) {
   all_keys <- unique(unlist(lapply(ls, names)))
   out <- lapply(all_keys, function(key) {
     parts <- vapply(ls, function(x) x[[key]] %||% "", character(1))
+    parts <- parts[nzchar(parts)]
+    # Ensure each non-empty part ends with newline before concatenating
+    parts <- sub("([^\n])$", "\\1\n", parts)
     paste0(parts, collapse = "")
   })
   setNames(out, all_keys)

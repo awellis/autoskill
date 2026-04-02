@@ -24,7 +24,7 @@ generate_stan_code <- function(config) {
     )
   }
 
-  merged <- collapse_stan_lists(frag_structural, frag_measurement, frag_population, frag_item)
+  merged <- collapse_stan_lists(frag_measurement, frag_structural, frag_population, frag_item)
   assemble_stan_program(merged, config)
 }
 
