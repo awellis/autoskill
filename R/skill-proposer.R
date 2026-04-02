@@ -12,8 +12,8 @@ skill_type <- type_object(
 assignment_type <- type_object(
   item_id = type_string("The item identifier"),
   skills = type_array(
-    type_string("Name of a required skill"),
-    .description = "Skills this item requires"
+    items = type_string("Name of a required skill"),
+    description = "Skills this item requires"
   )
 )
 
@@ -70,7 +70,7 @@ propose_taxonomy <- function(chat, items, context = NULL, n_skills = NULL) {
 
   chat$chat_structured(
     prompt,
-    type = type_array(skill_type, .description = "List of identified skills")
+    type = type_array(items = skill_type, description = "List of identified skills")
   ) |>
     mutate(skill_id = str_c("skill_", row_number()), .before = 1)
 }
@@ -80,7 +80,7 @@ assign_skills <- function(chat, items, taxonomy) {
 
   chat$chat_structured(
     prompt,
-    type = type_array(assignment_type, .description = "Skill assignments per item")
+    type = type_array(items = assignment_type, description = "Skill assignments per item")
   ) |>
     unnest(skills) |>
     rename(skill_name = skills) |>
