@@ -7,7 +7,7 @@ Description: Discovers latent knowledge component (KC) structures in student
     response data using LLM-driven hypothesis generation and Bayesian model
     comparison. Combines cognitive task analysis via large language models with
     multilevel IRT evaluation via Stan.
-License: MIT + file LICENSE
+License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
