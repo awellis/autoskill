@@ -63,25 +63,22 @@ Ignored initially. Responses are treated as a batch, exchangeable given the stud
 
 ### Example
 
-Six items on a math test. The LLM hypothesizes two KCs: algebra and word problem comprehension.
+Eight items on a middle school math test. The LLM hypothesizes three KCs: linear equations, fraction operations, and equation setup (translating a problem description into a solvable equation).
 
-| Item | Algebra | Word problems |
-|---|---|---|
-| Solve 3x + 5 = 20 | lambda_11 | 0 |
-| Simplify 2(x + 3) - x | lambda_21 | 0 |
-| "You have $11, apples cost $2. How many can you buy?" | 0 | lambda_32 |
-| "A train goes x km/h for 3h, covering 180 km. Find x." | lambda_41 | lambda_42 |
-| Factor x^2 - 9 | lambda_51 | 0 |
-| "Two numbers sum to 20, differ by 4. Find them." | lambda_61 | lambda_62 |
+| Item | Linear eq. | Fractions | Eq. setup |
+|---|---|---|---|
+| Solve: 3x + 5 = 20 | lambda_11 | 0 | 0 |
+| Simplify: 2(x + 3) - x | lambda_21 | 0 | 0 |
+| Compute: 1/2 + 1/3 | 0 | lambda_32 | 0 |
+| A train goes x km/h for 3h, covering 180 km. Find x. | lambda_41 | 0 | lambda_43 |
+| Factor: x^2 - 9 | lambda_51 | 0 | 0 |
+| Convert 3/4 to a decimal | 0 | lambda_62 | 0 |
+| Two numbers sum to 20, differ by 4. Find them. | lambda_71 | 0 | lambda_73 |
+| Compute: 3/8 + 5/8 | 0 | lambda_82 | 0 |
 
-The zeros are the hypothesis. Items 1, 2, 5 require only algebra. Item 3 requires only word problem comprehension. Items 4 and 6 require both.
+Items 4 and 7 cross-load on both linear equations and equation setup: a student needs to formulate the equation from the problem description *and* solve it. A student who can solve 3x + 5 = 20 but fails the train problem may have the algebra but lack the ability to set up the equation.
 
-Two students:
-
-- Student A (theta = [1.5, -1.0]): strong algebra, weak word problems. Gets items 1, 2, 5 right easily. Struggles with item 3.
-- Student B (theta = [-0.5, 1.5]): weak algebra, strong word problems. Opposite pattern.
-
-If this structure is correct, these students produce systematically different response patterns that a single-factor model cannot explain. The LLM's job is to discover that this two-factor structure fits the data better than alternatives.
+In SEM mode, the LLM might further propose that equation setup depends on linear equations (you need to know what a solvable equation looks like before you can construct one), giving a directed edge in the structural model.
 
 ## Architecture
 
