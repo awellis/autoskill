@@ -155,21 +155,53 @@ optimize_structure <- function(responses, items, initial_config = NULL,
     history[[iter]] <- iter_result
   }
 
+  stacked_weights <- collect_stacked_weights(history)
+
   base::structure(
     list(best = best_result, history = history,
-         n_iterations = length(history), best_elpd = best_elpd),
+         n_iterations = length(history), best_elpd = best_elpd,
+         stacked_weights = stacked_weights),
     class = "optimization_result"
   )
 }
 
+#' @noRd
+collect_stacked_weights <- function(history) {
+  fit_results <- purrr::map(history, "fit_result")
+  has_fit <- !purrr::map_lgl(fit_results, is.null)
+  if (!any(has_fit)) return(NULL)
+
+  fits <- fit_results[has_fit]
+  names(fits) <- paste0("iter_", which(has_fit))
+
+  tryCatch(
+    compute_stacked_weights(fits),
+    error = function(e) {
+      cli_warn("Stacking failed: {conditionMessage(e)}")
+      NULL
+    }
+  )
+}
+
 #' @export
-print.optimization_result <- function(x, ...) {
+print.optimization_result <- function(x, ..., n_top = 5) {
   cat(sprintf("<optimization_result>: %d iterations\n", x$n_iterations))
   cat(sprintf("  Best ELPD: %.1f\n", x$best_elpd))
   if (!is.null(x$best)) {
     cat(sprintf("  Best config: %s/%s/%s/%s\n",
         x$best$config$spec$measurement, x$best$config$spec$structural,
         x$best$config$spec$population, x$best$config$spec$item))
+  }
+  if (!is.null(x$stacked_weights) && length(x$stacked_weights) > 0L) {
+    sw <- sort(x$stacked_weights, decreasing = TRUE)
+    top <- utils::head(sw, n_top)
+    cat("  Stacked weights:\n")
+    for (i in seq_along(top)) {
+      cat(sprintf("    %s: %.3f\n", names(top)[i], top[i]))
+    }
+    if (length(sw) > n_top) {
+      cat(sprintf("    (... %d more)\n", length(sw) - n_top))
+    }
   }
   invisible(x)
 }
