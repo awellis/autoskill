@@ -56,6 +56,32 @@ skip_if_no_cmdstan <- function() {
   )
 }
 
+# Lightweight fake response_data for cache/parallel tests (no Stan needed)
+make_fake_responses <- function(n_students = 10, n_items = 4, seed = 1) {
+  withr::with_seed(seed, {
+    Y <- matrix(sample(0:1, n_students * n_items, replace = TRUE),
+                n_students, n_items)
+  })
+  rownames(Y) <- paste0("s_", seq_len(n_students))
+  colnames(Y) <- paste0("item_", seq_len(n_items))
+  response_data(Y)
+}
+
+# Minimal fit_result with just the fields the optimizer reads
+make_fake_fit_result <- function(config, elpd = -100) {
+  est <- matrix(c(elpd, 5), nrow = 1,
+                dimnames = list("elpd_loo", c("Estimate", "SE")))
+  loo_obj <- structure(list(estimates = est), class = "loo")
+  base::structure(
+    list(fit = NULL, config = config,
+         diagnostics = tibble::tibble(metric = "n_divergences",
+                                      value = 0, status = "ok"),
+         loo = loo_obj,
+         param_summary = tibble::tibble()),
+    class = "fit_result"
+  )
+}
+
 # Helper to build a minimal config for testing blocks and generator
 make_test_config <- function(measurement = "linear",
                              structural = "independent",
