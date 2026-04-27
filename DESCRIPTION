@@ -35,6 +35,9 @@ Suggests:
     brms,
     withr,
     knitr,
-    rmarkdown
+    rmarkdown,
+    cachem,
+    furrr,
+    future
 Config/testthat/edition: 3
 Additional_repositories: https://stan-dev.r-universe.dev/

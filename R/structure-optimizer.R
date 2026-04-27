@@ -3,11 +3,14 @@
 #' @param config A `model_config` object.
 #' @param previous_results List of previous iteration_results.
 #' @param skip_sbc If TRUE, skip SBC check.
-#' @param ... Additional arguments passed to `fit_model()`.
+#' @param cache Optional `cachem` cache (e.g. from [fit_cache()]) for
+#'   memoising fits. With `NULL` (default) every fit runs fresh.
+#' @param ... Additional arguments passed to [fit_cached()] (and onward to
+#'   [fit_model()]).
 #' @return An S3 object of class `iteration_result`.
 #' @export
 run_iteration <- function(responses, config, previous_results = list(),
-                          skip_sbc = TRUE, ...) {
+                          skip_sbc = TRUE, cache = NULL, ...) {
   id_check <- check_identifiability(config)
   if (!id_check$passed) {
     return(base::structure(
@@ -30,7 +33,7 @@ run_iteration <- function(responses, config, previous_results = list(),
     }
   }
 
-  fit_result <- fit_model(responses, config, ...)
+  fit_result <- fit_cached(responses, config, cache = cache, ...)
   elpd <- fit_result$loo$estimates["elpd_loo", "Estimate"]
 
   base::structure(
@@ -63,14 +66,17 @@ print.iteration_result <- function(x, ...) {
 #' @param chat An ellmer chat object.
 #' @param model LLM model name.
 #' @param log_file Optional JSONL log file path.
-#' @param ... Additional arguments passed to `fit_model()`.
+#' @param cache Optional `cachem` cache (e.g. from [fit_cache()]) for
+#'   memoising fits across iterations and across runs. Useful for
+#'   resumability and for replay during development.
+#' @param ... Additional arguments passed to [fit_cached()].
 #' @return An S3 object of class `optimization_result`.
 #' @export
 optimize_structure <- function(responses, items, initial_config = NULL,
                                max_iter = 10, patience = 3, interactive = FALSE,
                                skip_sbc = TRUE, chat = NULL,
                                model = "claude-sonnet-4-20250514",
-                               log_file = NULL, ...) {
+                               log_file = NULL, cache = NULL, ...) {
   if (is.null(chat)) {
     chat <- ellmer::chat_anthropic(
       system_prompt = build_reflection_system_prompt(),
@@ -95,7 +101,8 @@ optimize_structure <- function(responses, items, initial_config = NULL,
                           config$spec$population, config$spec$item, sep = "/")
     cli_inform("Iteration {iter}/{max_iter}: {config_label}")
 
-    iter_result <- run_iteration(responses, config, skip_sbc = skip_sbc, ...)
+    iter_result <- run_iteration(responses, config, skip_sbc = skip_sbc,
+                                  cache = cache, ...)
 
     improved <- FALSE
     if (!is.na(iter_result$elpd) && iter_result$elpd > best_elpd) {
@@ -148,21 +155,53 @@ optimize_structure <- function(responses, items, initial_config = NULL,
     history[[iter]] <- iter_result
   }
 
+  stacked_weights <- collect_stacked_weights(history)
+
   base::structure(
     list(best = best_result, history = history,
-         n_iterations = length(history), best_elpd = best_elpd),
+         n_iterations = length(history), best_elpd = best_elpd,
+         stacked_weights = stacked_weights),
     class = "optimization_result"
   )
 }
 
+#' @noRd
+collect_stacked_weights <- function(history) {
+  fit_results <- purrr::map(history, "fit_result")
+  has_fit <- !purrr::map_lgl(fit_results, is.null)
+  if (!any(has_fit)) return(NULL)
+
+  fits <- fit_results[has_fit]
+  names(fits) <- paste0("iter_", which(has_fit))
+
+  tryCatch(
+    compute_stacked_weights(fits),
+    error = function(e) {
+      cli_warn("Stacking failed: {conditionMessage(e)}")
+      NULL
+    }
+  )
+}
+
 #' @export
-print.optimization_result <- function(x, ...) {
+print.optimization_result <- function(x, ..., n_top = 5) {
   cat(sprintf("<optimization_result>: %d iterations\n", x$n_iterations))
   cat(sprintf("  Best ELPD: %.1f\n", x$best_elpd))
   if (!is.null(x$best)) {
     cat(sprintf("  Best config: %s/%s/%s/%s\n",
         x$best$config$spec$measurement, x$best$config$spec$structural,
         x$best$config$spec$population, x$best$config$spec$item))
+  }
+  if (!is.null(x$stacked_weights) && length(x$stacked_weights) > 0L) {
+    sw <- sort(x$stacked_weights, decreasing = TRUE)
+    top <- utils::head(sw, n_top)
+    cat("  Stacked weights:\n")
+    for (i in seq_along(top)) {
+      cat(sprintf("    %s: %.3f\n", names(top)[i], top[i]))
+    }
+    if (length(sw) > n_top) {
+      cat(sprintf("    (... %d more)\n", length(sw) - n_top))
+    }
   }
   invisible(x)
 }

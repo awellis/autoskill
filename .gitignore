@@ -49,3 +49,6 @@ inst/doc/
 # Stan compilation cache
 *.stan.exe
 *.stan.hpp
+
+# Other artifacts
+optimization-log.jsonl

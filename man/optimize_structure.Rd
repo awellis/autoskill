@@ -15,6 +15,7 @@ optimize_structure(
   chat = NULL,
   model = "claude-sonnet-4-20250514",
   log_file = NULL,
+  cache = NULL,
   ...
 )
 }
@@ -39,7 +40,11 @@ optimize_structure(
 
 \item{log_file}{Optional JSONL log file path.}
 
-\item{...}{Additional arguments passed to \code{fit_model()}.}
+\item{cache}{Optional \code{cachem} cache (e.g. from \code{\link[=fit_cache]{fit_cache()}}) for
+memoising fits across iterations and across runs. Useful for
+resumability and for replay during development.}
+
+\item{...}{Additional arguments passed to \code{\link[=fit_cached]{fit_cached()}}.}
 }
 \value{
 An S3 object of class \code{optimization_result}.

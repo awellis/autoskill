@@ -9,6 +9,7 @@ run_iteration(
   config,
   previous_results = list(),
   skip_sbc = TRUE,
+  cache = NULL,
   ...
 )
 }
@@ -21,7 +22,11 @@ run_iteration(
 
 \item{skip_sbc}{If TRUE, skip SBC check.}
 
-\item{...}{Additional arguments passed to \code{fit_model()}.}
+\item{cache}{Optional \code{cachem} cache (e.g. from \code{\link[=fit_cache]{fit_cache()}}) for
+memoising fits. With \code{NULL} (default) every fit runs fresh.}
+
+\item{...}{Additional arguments passed to \code{\link[=fit_cached]{fit_cached()}} (and onward to
+\code{\link[=fit_model]{fit_model()}}).}
 }
 \value{
 An S3 object of class \code{iteration_result}.
