@@ -32,6 +32,7 @@ JuliaLocalPreferences.toml
 
 # Local folders
 notes/*
+!notes/related-work.md
 .remember/*
 
 # Envonment variables
