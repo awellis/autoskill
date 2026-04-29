@@ -2,53 +2,42 @@
 % Please edit documentation in R/structure-optimizer.R
 \name{optimize_structure}
 \alias{optimize_structure}
-\title{Run the full optimization loop}
+\title{Run the optimization loop}
 \usage{
 optimize_structure(
-  responses,
-  items,
-  initial_config = NULL,
+  problem,
   max_iter = 10,
   patience = 3,
-  interactive = FALSE,
-  skip_sbc = TRUE,
-  chat = NULL,
-  model = "claude-sonnet-4-20250514",
-  log_file = NULL,
   cache = NULL,
+  log_file = NULL,
   ...
 )
 }
 \arguments{
-\item{responses}{A \code{response_data} object.}
-
-\item{items}{Tibble with \code{item_id} and \code{text}.}
-
-\item{initial_config}{A \code{model_config} to start from.}
+\item{problem}{A \code{structure_problem} object (e.g. from
+\code{\link[=skill_problem]{skill_problem()}} or any other domain constructor).}
 
 \item{max_iter}{Maximum iterations.}
 
-\item{patience}{Stop after N consecutive non-improving.}
+\item{patience}{Stop after \code{N} consecutive non-improving iterations.}
 
-\item{interactive}{If TRUE, pause for approval after each iteration.}
-
-\item{skip_sbc}{Skip SBC checks.}
-
-\item{chat}{An ellmer chat object.}
-
-\item{model}{LLM model name.}
+\item{cache}{Optional \code{cachem} cache for memoising fits across
+iterations and across runs.}
 
 \item{log_file}{Optional JSONL log file path.}
 
-\item{cache}{Optional \code{cachem} cache (e.g. from \code{\link[=fit_cache]{fit_cache()}}) for
-memoising fits across iterations and across runs. Useful for
-resumability and for replay during development.}
-
-\item{...}{Additional arguments passed to \code{\link[=fit_cached]{fit_cached()}}.}
+\item{...}{Additional arguments threaded to \code{problem$score()} (e.g.
+\code{chains}, \code{iter_warmup}).}
 }
 \value{
 An S3 object of class \code{optimization_result}.
 }
 \description{
-Run the full optimization loop
+Greedy ELPD-argmax with LLM-driven refinement and stacking over the
+visited structures. Drives a \code{\link[=structure_problem]{structure_problem()}}: propose initial,
+score, reflect, propose refinement, repeat.
+}
+\seealso{
+\code{\link[=skill_problem]{skill_problem()}}, \code{\link[=optimize_structure_skill]{optimize_structure_skill()}},
+\code{\link[=compute_stacked_weights]{compute_stacked_weights()}}
 }

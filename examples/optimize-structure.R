@@ -52,7 +52,10 @@ sim <- simulate_responses(true_config, n_students = 500, seed = 42)
 initial_config <- model_config(model_spec(structural = "independent"), true_structure)
 
 # --- 5. Run the optimizer (requires ANTHROPIC_API_KEY) ---
-result <- optimize_structure(
+# optimize_structure_skill is the legacy wrapper around the generic
+# optimize_structure(problem, ...). New code can also call:
+#   optimize_structure(skill_problem(items, sim$responses, ...), ...)
+result <- optimize_structure_skill(
   sim$responses,
   items,
   initial_config = initial_config,

@@ -3,13 +3,17 @@ test_that("run_iteration returns iteration_result", {
   skip_on_cran()
   config <- make_test_config()
   sim <- simulate_responses(config, n_students = 100, seed = 42)
-  result <- run_iteration(sim$responses, config, chains = 2, iter_warmup = 200, iter_sampling = 200)
+  problem <- skill_problem(items = make_test_items(),
+                           responses = sim$responses)
+
+  result <- run_iteration(problem, config,
+                          chains = 2, iter_warmup = 200, iter_sampling = 200)
   expect_s3_class(result, "iteration_result")
   expect_true(result$identifiable)
   expect_s3_class(result$fit_result, "fit_result")
 })
 
-test_that("run_iteration rejects non-identifiable config", {
+test_that("run_iteration rejects non-identifiable structure", {
   items <- make_test_items()
   taxonomy <- make_test_taxonomy()
   assignments <- make_test_assignments()
@@ -27,10 +31,26 @@ test_that("run_iteration rejects non-identifiable config", {
   colnames(Y) <- paste0("item_", 1:8)
   rd <- response_data(Y)
 
-  result <- run_iteration(rd, config)
+  problem <- skill_problem(items = items, responses = rd)
+  result <- run_iteration(problem, config)
+
   expect_s3_class(result, "iteration_result")
   expect_false(result$identifiable)
   expect_null(result$fit_result)
+})
+
+test_that("run_iteration rejects non-structure_problem first arg", {
+  expect_error(
+    run_iteration(list(), make_test_config()),
+    "must be a"
+  )
+})
+
+test_that("optimize_structure rejects non-structure_problem first arg", {
+  expect_error(
+    optimize_structure(list()),
+    "must be a"
+  )
 })
 
 test_that("log_iteration writes JSONL", {
@@ -40,7 +60,7 @@ test_that("log_iteration writes JSONL", {
   log_iteration(
     iter = 1, elpd = -150.3, improved = TRUE,
     diagnostics = tibble::tibble(metric = "n_divergences", value = 0, status = "ok"),
-    config_label = "linear/independent/single/basic",
+    label = "linear/independent/single/basic",
     rationale = "initial model", log_file = tmp
   )
 
@@ -49,4 +69,5 @@ test_that("log_iteration writes JSONL", {
   parsed <- jsonlite::fromJSON(lines[1])
   expect_equal(parsed$iter, 1)
   expect_equal(parsed$elpd, -150.3)
+  expect_equal(parsed$structure, "linear/independent/single/basic")
 })
