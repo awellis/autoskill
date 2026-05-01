@@ -50,6 +50,27 @@ compute_stacked_weights <- function(fits,
     cli_abort("All {.arg fits} must have a {.field $loo} component.")
   }
 
-  weights <- loo::loo_model_weights(loos, method = method, ...)
+  # Build a pointwise matrix [n_obs x n_models] from each fit's
+  # $loo$pointwise[, "elpd_loo"]. This works whether the underlying
+  # objects are full psis_loo (from real Stan fits) or synthetic loo
+  # shells (e.g. from causal_problem's BIC scorer).
+  pointwise_list <- lapply(loos, function(l) {
+    if (is.null(l$pointwise)) {
+      cli_abort("Each fit's $loo must have a {.field pointwise} matrix.")
+    }
+    as.numeric(l$pointwise[, "elpd_loo"])
+  })
+  obs_counts <- vapply(pointwise_list, length, integer(1L))
+  if (length(unique(obs_counts)) > 1L) {
+    cli_abort("Fits must be over the same observations; got pointwise lengths {.val {obs_counts}}.")
+  }
+  lpd_mat <- do.call(cbind, pointwise_list)
+
+  weights <- if (method == "stacking") {
+    loo::stacking_weights(lpd_mat, ...)
+  } else {
+    loo::pseudobma_weights(lpd_mat, ...)
+  }
+
   stats::setNames(as.numeric(weights), names(fits))
 }
