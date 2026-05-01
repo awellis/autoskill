@@ -4,33 +4,23 @@
 \alias{run_iteration}
 \title{Run one iteration of the optimization loop}
 \usage{
-run_iteration(
-  responses,
-  config,
-  previous_results = list(),
-  skip_sbc = TRUE,
-  cache = NULL,
-  ...
-)
+run_iteration(problem, structure, cache = NULL, ...)
 }
 \arguments{
-\item{responses}{A \code{response_data} object.}
+\item{problem}{A \code{structure_problem} object.}
 
-\item{config}{A \code{model_config} object.}
+\item{structure}{The current candidate structure (e.g. a \code{model_config}
+for skill problems, an \code{igraph} DAG for causal problems).}
 
-\item{previous_results}{List of previous iteration_results.}
+\item{cache}{Optional \code{cachem} cache (e.g. from \code{\link[=fit_cache]{fit_cache()}}).}
 
-\item{skip_sbc}{If TRUE, skip SBC check.}
-
-\item{cache}{Optional \code{cachem} cache (e.g. from \code{\link[=fit_cache]{fit_cache()}}) for
-memoising fits. With \code{NULL} (default) every fit runs fresh.}
-
-\item{...}{Additional arguments passed to \code{\link[=fit_cached]{fit_cached()}} (and onward to
-\code{\link[=fit_model]{fit_model()}}).}
+\item{...}{Additional arguments passed to \code{problem$score()}.}
 }
 \value{
 An S3 object of class \code{iteration_result}.
 }
 \description{
-Run one iteration of the optimization loop
+Generic over the structure type. Validates via \code{problem$validate()},
+fits via \code{problem$score()}, and reports back diagnostics via
+\code{problem$summarize_fit()} if the loop needs them.
 }
