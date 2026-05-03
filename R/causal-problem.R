@@ -121,6 +121,11 @@ score_causal_dag <- function(data, dag) {
     } else {
       X <- cbind(1, as.matrix(data[, parents, drop = FALSE]))
       coefs <- qr.coef(qr(X), y)
+      if (any(is.na(coefs))) {
+        # Rank-deficient design: refuse to score, return -Inf so the
+        # caller treats this DAG as unscoreable.
+        return(unscoreable_fit(dag))
+      }
       mu_hat <- as.numeric(X %*% coefs)
       n_params_node <- length(parents) + 2L  # intercept, slopes, variance
     }
@@ -312,7 +317,34 @@ causal_problem <- function(data, variables = NULL) {
       )
     },
 
+    propose_local_move = function(structure, ...) {
+      random_local_move(structure)
+    },
+
     class = "causal_problem"
+  )
+}
+
+#' @noRd
+unscoreable_fit <- function(dag) {
+  loo_obj <- base::structure(
+    list(
+      estimates = matrix(
+        c(-Inf, NA_real_), nrow = 1L,
+        dimnames = list("elpd_loo", c("Estimate", "SE"))
+      ),
+      pointwise = matrix(numeric(0), ncol = 1L,
+                         dimnames = list(NULL, "elpd_loo"))
+    ),
+    class = "loo"
+  )
+  base::structure(
+    list(fit = NULL, config = dag, loo = loo_obj,
+         diagnostics = tibble::tibble(
+           metric = "unscoreable", value = NA_real_, status = "critical"
+         ),
+         param_summary = tibble::tibble()),
+    class = "fit_result"
   )
 }
 
