@@ -10,9 +10,8 @@ normalize_log_weights(log_weights)
 \item{log_weights}{Numeric vector.}
 }
 \value{
-Numeric vector the same length as \code{log_weights}.
+Numeric vector the same length as input; \code{sum(exp(result)) == 1}.
 }
 \description{
-Returns \code{log_weights - logSumExp(log_weights)} so that
-\code{sum(exp(result)) == 1} to within floating-point.
+Numerically stable log-sum-exp normalisation
 }
