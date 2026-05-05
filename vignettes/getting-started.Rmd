@@ -1,0 +1,271 @@
+---
+title: "Getting started with autoskill"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with autoskill}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4
+)
+set.seed(1)
+```
+
+## What this package does
+
+autoskill is an engine for **Bayesian structure search**: you have data and some hypotheses about a latent structure (which skills exist, what causes what, which mediators sit on which paths), and you want a posterior over candidate structures rather than a single best guess.
+
+The engine has three deliberate features:
+
+1. **Domain knowledge enters as a prior.** Each candidate edge or loading carries a probability you (or an LLM acting on your behalf) assign before seeing data. The data updates the prior; auditable judgements survive.
+2. **Bayesian model comparison scores candidates.** PSIS-LOO for IRT; BIC for closed-form Gaussian; whatever your domain dictates, exposed through one slot on the problem object.
+3. **The output is a posterior over structures.** Stacking weights from greedy search, particle weights from SMC. Both produce edge marginals and feature expectations rather than a single argmax.
+
+The package shipped with one application (skill discovery via multilevel IRT). It now ships with a generic abstraction (`structure_problem`) and a second concrete application (`causal_problem`, observational DAG discovery). Building a third application is the same shape of work.
+
+## The interface
+
+A `structure_problem` is a list of closures with a fixed contract. Each domain-specific constructor (e.g. `skill_problem`, `causal_problem`) wraps domain code into these slots:
+
+| Slot | Type | Purpose |
+|---|---|---|
+| `propose_initial` | `() -> structure` | Starting structure |
+| `propose_refinement` | `(current, fit, history) -> structure \| NULL` | Greedy LLM-driven refinement |
+| `propose_local_move` | `(structure, ...) -> structure` | SMC mutation kernel |
+| `score` | `(structure, cache, ...) -> fit_result` | Fit + return LOO |
+| `log_prior` | `(structure) -> numeric` | Domain prior |
+| `validate` | `(structure) -> list(passed, problems)` | Pre-fit identifiability check |
+| `cache_key` | `(structure, fit_args) -> chr` | Hash for caching |
+| `summarize_structure` | `(structure) -> chr` | Short label for logs |
+| `summarize_fit` | `(fit_result) -> list` | Reflection-prompt input |
+
+Two optimisation algorithms drive any `structure_problem`: `optimize_structure()` (greedy with stacking on top) and `optimize_structure_smc()` (sequential Monte Carlo with tempered Barker MH).
+
+## A complete worked example: causal DAG discovery
+
+The `causal_problem` is the easiest entry point because it needs no Stan and no API key. We simulate from a known DAG and recover it.
+
+### Simulate
+
+A linear-Gaussian chain `A -> B -> C` with a confounding edge `A -> C`:
+
+```{r simulate}
+library(autoskill)
+library(tibble)
+
+n <- 300
+A <- rnorm(n)
+B <- 0.7 * A + rnorm(n, sd = 0.5)
+C <- 0.3 * A + 0.5 * B + rnorm(n, sd = 0.4)
+dat <- data.frame(A = A, B = B, C = C)
+```
+
+The true DAG has three edges: `A -> B`, `A -> C`, `B -> C`.
+
+### Build a problem
+
+```{r build}
+problem <- causal_problem(dat)
+problem
+```
+
+`causal_problem()` reads numeric columns from `dat`, builds an empty starting DAG, and wires every closure on the problem. Internally:
+
+- `score`: per-node Gaussian regression with BIC penalty (decomposable, fast).
+- `propose_local_move`: random single-edge add/remove/reverse, retried until acyclic.
+- `validate`: acyclicity check.
+- `summarize_structure`: edge count.
+
+### Greedy search
+
+The simplest entry point. Starts from the empty DAG and follows ELPD-improving local moves until convergence:
+
+```{r greedy, results = "hide"}
+greedy <- optimize_structure(problem, max_iter = 30, patience = 10)
+```
+
+```{r greedy-print}
+greedy
+```
+
+The print method shows the best DAG and the **stacking weights** over visited iterations: how the predictive ensemble distributes weight across the structures the search visited.
+
+### Sequential Monte Carlo
+
+Where greedy gives a single best plus stacking, SMC gives a particle population approximating the posterior over structures.
+
+```{r smc, results = "hide"}
+smc <- optimize_structure_smc(
+  problem,
+  n_particles = 16,
+  n_steps = 10
+)
+```
+
+```{r smc-print}
+smc
+```
+
+Each step:
+
+1. Reweights particles to the next temperature (`pi_t(S) ~ p(S) * exp(gamma_t * elpd(S))`).
+2. Resamples if effective sample size drops below half the population.
+3. Mutates each particle via Barker MH with `propose_local_move` as the proposal.
+
+The output gives you weights that interpret as posterior probabilities under the tempered target.
+
+### Edge marginal probabilities
+
+The most useful summary for DAG-shaped problems is the matrix of posterior edge inclusion probabilities. `edge_marginals()` computes `Sum_p w_p * I(adj_p[i,j] = 1)`:
+
+```{r edge-marginals}
+P <- edge_marginals(smc)
+round(P, 2)
+```
+
+Read row -> column: `P["A", "B"]` is the posterior probability of `A -> B`.
+
+The truth has edges `A -> B` and `B -> C`. Whether `A -> C` is recovered depends on data and run length; with stronger data or more steps it concentrates further.
+
+### General-purpose feature expectations
+
+For any structure feature, `structure_marginal()` computes its weighted expectation under the SMC posterior. For instance, the expected number of edges:
+
+```{r expected-edges}
+structure_marginal(smc, function(p) sum(p$adj))
+```
+
+Or whether a particular edge is present:
+
+```{r p-edge}
+structure_marginal(smc, function(p) p$adj["A", "B"])
+```
+
+Same primitive; works for any feature you can write as a function of one particle.
+
+## Skill discovery: the founding application
+
+The skill case is the original autoskill use case. The flow is identical, modulo two practical requirements:
+
+1. **An LLM API key** for `propose_initial` (generates a skill taxonomy from item text) and `propose_refinement` (refines the structure based on diagnostics).
+2. **Stan** (via `cmdstanr`) to fit the multilevel IRT measurement model.
+
+Skeleton:
+
+```{r skill-skeleton, eval = FALSE}
+items <- tibble::tibble(
+  item_id = paste0("item_", 1:8),
+  text = c(
+    "Solve: 3x + 5 = 20",
+    "Simplify: 2(x + 3) - x",
+    "Compute: 1/2 + 1/3",
+    "A train goes x km/h for 3h, covering 180 km. Find x.",
+    "Factor: x^2 - 9",
+    "Convert 3/4 to a decimal",
+    "Two numbers sum to 20, differ by 4. Find them.",
+    "Compute: 3/8 + 5/8"
+  )
+)
+
+# responses: 0/1 matrix with one row per student, one column per item
+problem <- skill_problem(items = items, responses = responses)
+
+# Greedy with stacking; uses cmdstanr for fits.
+result <- optimize_structure(
+  problem,
+  max_iter = 10,
+  cache = fit_cache(dir = "fit_cache")
+)
+print(result)
+
+# SMC: same interface, particle population over structures.
+smc <- optimize_structure_smc(
+  problem,
+  n_particles = 16,
+  n_steps = 10,
+  cache = fit_cache(dir = "fit_cache")
+)
+```
+
+Or for the legacy calling convention (matches pre-refactor code):
+
+```{r skill-legacy, eval = FALSE}
+result <- optimize_structure_skill(
+  responses = responses,
+  items = items,
+  max_iter = 10
+)
+```
+
+The cache (`fit_cache()`) makes a real difference here: many SMC particles end up at duplicate structures after resampling, and the cache deduplicates the (slow) Stan fits.
+
+## Defining your own problem
+
+A new domain (mediation, path analysis, network meta-analysis) is one constructor that fills the structure_problem slots. The pattern from `causal_problem`:
+
+```{r template, eval = FALSE}
+my_problem <- function(data, ...) {
+  # Data lives in the closure; every slot can reference it.
+
+  structure_problem(
+    data = data,
+
+    propose_initial = function(...) {
+      # Return your starting structure (a domain object)
+    },
+
+    propose_refinement = function(current, fit_result, history) {
+      # Greedy: typically an LLM call returning a refined structure
+    },
+
+    propose_local_move = function(structure, ...) {
+      # SMC: a stochastic local perturbation
+    },
+
+    score = function(structure, cache = NULL, ...) {
+      # Return a fit_result with $loo$estimates["elpd_loo", "Estimate"]
+      # and $loo$pointwise[, "elpd_loo"] (for stacking).
+    },
+
+    log_prior = function(structure) {
+      # Log P(structure). Return 0 for uniform.
+    },
+
+    validate = function(structure) {
+      # list(passed = TRUE/FALSE, problems = character)
+    },
+
+    cache_key = function(structure, fit_args) {
+      # Hash uniquely identifying (structure, data, fit_args)
+    },
+
+    summarize_structure = function(structure) {
+      # Short label, used in logs and progress reports
+    },
+
+    summarize_fit = function(fit_result) {
+      # Whatever the LLM (or your reflector) needs to see
+    },
+
+    class = "my_problem"
+  )
+}
+```
+
+Once that's done, `optimize_structure()` and `optimize_structure_smc()` work without any domain-specific code anywhere in the loop.
+
+## Cross-references
+
+- `?structure_problem` for the full slot contract.
+- `?causal_problem`, `?skill_problem` for the two shipped applications.
+- `?optimize_structure` and `?optimize_structure_smc` for the two algorithms.
+- `?edge_marginals`, `?structure_marginal` for posterior summaries.
+- `?fit_cache` for resumability across sessions.
+
+The `notes/related-work.md` file (in the repository, not the installed package) covers academic context: Castelletti et al. (2024) on Bayesian causal discovery for policy, Kuipers and Moffa (2017) on Partition MCMC.

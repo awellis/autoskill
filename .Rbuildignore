@@ -7,3 +7,6 @@
 ^\.github$
 ^docs$
 ^_pkgdown\.yml$
+^NEXT\.md$
+^optimization-log\.jsonl$
+^fit_cache$

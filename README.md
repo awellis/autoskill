@@ -1,6 +1,19 @@
 # autoskill
 
-LLM-driven discovery of latent knowledge component structure in student response data.
+LLM-driven Bayesian structure search. Skill discovery from student responses is the founding application; the engine is generic.
+
+The package solves problems of the shape: you have data, you have hypotheses about a latent structure (which skills exist, which causes which, which mediators sit on which paths), and you want a posterior over candidate structures rather than a single best guess. An LLM proposes structural hypotheses, a Bayesian model-comparison pipeline scores them, and the engine refines via either greedy search with stacking or sequential Monte Carlo with Barker MH.
+
+Two applications ship out of the box:
+
+- **`skill_problem`**: discover latent knowledge components from student response data. Multilevel IRT measurement model, optional DAG among the latent skills (SEM), LLM-driven skill proposer.
+- **`causal_problem`**: discover a DAG over observed continuous variables. Per-node Gaussian regression with BIC scoring, random local-move mutation kernel.
+
+Adding a third application (mediation, path analysis, network meta-analysis) is one constructor that fills the `structure_problem` slots.
+
+See the **Getting Started** vignette (`vignette("getting-started", package = "autoskill")`) for a runnable end-to-end walkthrough using `causal_problem` on synthetic data.
+
+## The skill problem
 
 Given a dataset of student responses to test items, autoskill discovers which latent knowledge components (KCs) best account for the data. Two modes:
 
@@ -105,6 +118,36 @@ Given a loading structure and student response data, the optimizer evaluates and
 ### Composition
 
 The skill proposer provides a semantically informed warm start. The structure optimizer tests whether it holds up against data. Together they close the loop between what items *should* require (semantic analysis) and what response patterns *actually* support (statistical evidence).
+
+## The generic engine
+
+Skill discovery is one instance of a more general pattern: LLM-driven Bayesian structure search. The engine is exposed as `structure_problem`, an S3 class whose closures define every domain-specific piece (proposers, scorer, validator, prior, summarisers). The optimisation algorithms drive *any* `structure_problem`.
+
+### `structure_problem` interface
+
+| Slot | Type | Purpose |
+|---|---|---|
+| `propose_initial` | `() -> structure` | Starting structure |
+| `propose_refinement` | `(current, fit, history) -> structure \| NULL` | Greedy refinement |
+| `propose_local_move` | `(structure, ...) -> structure` | SMC mutation kernel |
+| `score` | `(structure, cache, ...) -> fit_result` | Fit + return LOO |
+| `log_prior` | `(structure) -> numeric` | Domain prior |
+| `validate` | `(structure) -> list(passed, problems)` | Pre-fit identifiability check |
+| `cache_key` | `(structure, fit_args) -> chr` | Hash for caching |
+| `summarize_structure` | `(structure) -> chr` | Short label for logs |
+| `summarize_fit` | `(fit_result) -> list` | Reflection-prompt input |
+
+Domain constructors fill the slots. `skill_problem(items, responses, ...)` and `causal_problem(data, ...)` are the two shipped instances.
+
+### Two algorithms
+
+**Greedy with stacking** (`optimize_structure`) follows ELPD-improving local moves with patience-based stopping. Returns the best structure plus stacking weights over visited iterations. Cheap, useful when one good structure is enough.
+
+**Sequential Monte Carlo** (`optimize_structure_smc`) maintains a particle population approximating the tempered posterior `pi_t(S) ~ p(S) * exp(gamma_t * elpd(S))`. Each step reweights particles to the next temperature (closed form, no refit), resamples on low ESS, and mutates each particle via Barker MH. Returns particles, posterior weights, and `edge_marginals()` / `structure_marginal()` summaries.
+
+### Caching and parallel fits
+
+`fit_cache(dir = "fit_cache")` builds a disk-backed cache that survives between sessions. `optimize_structure(problem, cache = ...)` and `optimize_structure_smc(problem, cache = ...)` both honour it. Many SMC particles converge to identical structures after resampling; the cache makes this free instead of expensive. `fit_many(responses, configs, cache = ...)` runs a batch of fits in parallel via `furrr` for the cases where you need it.
 
 ## Composable model blocks
 
