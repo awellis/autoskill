@@ -7,13 +7,11 @@
 systematic_resample(weights)
 }
 \arguments{
-\item{weights}{Normalised weights, summing to 1.}
+\item{weights}{Non-negative weights; need not be exactly normalised.}
 }
 \value{
-Integer vector of indices, length \code{length(weights)}.
+Integer vector of \code{length(weights)} indices.
 }
 \description{
-Samples \code{length(weights)} indices from \code{weights} using a single
-uniform draw to seed \code{K} equally-spaced positions on \verb{[0, 1)}.
-Lower variance than multinomial resampling.
+Systematic resampling
 }

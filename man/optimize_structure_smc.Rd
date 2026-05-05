@@ -2,55 +2,60 @@
 % Please edit documentation in R/smc.R
 \name{optimize_structure_smc}
 \alias{optimize_structure_smc}
-\title{Sequential Monte Carlo over structures (minimum viable)}
+\title{Sequential Monte Carlo over structures}
 \usage{
 optimize_structure_smc(
   problem,
   n_particles = 16L,
   n_steps = 10L,
+  schedule = NULL,
+  n_mutations_per_step = 1L,
   ess_resample_threshold = 0.5,
   cache = NULL,
   ...
 )
 }
 \arguments{
-\item{problem}{A \code{structure_problem} with a \code{propose_local_move} slot.}
+\item{problem}{A \code{structure_problem} with \code{propose_local_move}.}
 
 \item{n_particles}{Number of particles (default 16).}
 
-\item{n_steps}{Number of SMC steps (default 10).}
+\item{n_steps}{Number of tempering steps (default 10).}
 
-\item{ess_resample_threshold}{Resample when effective sample size
-falls below this fraction of \code{n_particles}. Default 0.5.}
+\item{schedule}{Optional length-\code{(n_steps + 1)} numeric vector of
+temperatures, increasing from 0 to 1. Defaults to a linear schedule.}
+
+\item{n_mutations_per_step}{Number of Barker MH sweeps per particle
+per step (default 1). Increase to improve mixing.}
+
+\item{ess_resample_threshold}{Resample when ESS falls below this
+fraction of \code{n_particles}. Default 0.5.}
 
 \item{cache}{Optional \code{cachem} cache passed to \code{problem$score()}.}
 
 \item{...}{Extra args forwarded to \code{problem$score()}.}
 }
 \value{
-An S3 object of class \code{smc_result} (subclassing
-\code{optimization_result}).
+An S3 object of class \code{smc_result}.
 }
 \description{
-Particle-population structure search against any \code{\link[=structure_problem]{structure_problem()}}.
-K particles are initialised from \code{problem$propose_initial}, mutated
-each step via \code{problem$propose_local_move}, scored by \code{problem$score},
-and reweighted by ELPD. Resampling kicks in when effective sample size
-falls below K/2.
+K-particle population sampler against any \code{\link[=structure_problem]{structure_problem()}}.
+Targets the tempered posterior \verb{π_t(S) ∝ p(S) · exp(γ_t · elpd(S))}
+along a schedule \verb{γ_t : 0 → 1}. Each step reweights particles by the
+incremental log-target (closed form, no refit), resamples on low ESS,
+and mutates via Barker acceptance with \code{problem$propose_local_move}
+as the proposal kernel.
 }
 \details{
-This is the "minimum viable" SMC: bootstrap particle filter with a
-static target. There is \strong{no tempering and no MH acceptance}, so
-particle weights are based on raw model fit rather than a properly
-annealed posterior. Useful for population-based exploration of the
-structure space and for surfacing multimodal posteriors that greedy
-search collapses; full Bayesian SMC over structures will add a
-tempering schedule and MH acceptance in a follow-up.
+Final particle weights approximate the posterior over visited
+structures; use \code{\link[=structure_marginal]{structure_marginal()}} / \code{\link[=edge_marginals]{edge_marginals()}} to
+summarise.
 
-Requires \code{problem$propose_local_move} to be a function (the mutation
-kernel). Errors otherwise. The greedy \code{optimize_structure()} does not
-need this slot.
+Requires \code{problem$propose_local_move} to be a function. ELPD plays
+the role of \verb{log L(S)} in the tempered target — it is a consistent
+estimator of expected log predictive density and serves as a
+principled ranking-equivalent to the log marginal likelihood.
 }
 \seealso{
-\code{\link[=optimize_structure]{optimize_structure()}}, \code{\link[=structure_problem]{structure_problem()}}
+\code{\link[=structure_marginal]{structure_marginal()}}, \code{\link[=edge_marginals]{edge_marginals()}}
 }

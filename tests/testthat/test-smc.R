@@ -122,3 +122,119 @@ test_that("SMC particle weights sum to 1 throughout history", {
     expect_equal(sum(exp(h$log_weights)), 1, tolerance = 1e-8)
   }
 })
+
+test_that("log_sum_exp matches the naive computation", {
+  x <- c(-2, 1, 3, -10)
+  expect_equal(log_sum_exp(x), log(sum(exp(x))), tolerance = 1e-12)
+})
+
+test_that("log_sum_exp is overflow-safe", {
+  x <- c(1e6, 1e6 + 1)
+  # Naive log(sum(exp(x))) would overflow; ours should not
+  out <- log_sum_exp(x)
+  expect_true(is.finite(out))
+  expect_equal(out, 1e6 + log(1 + exp(1)), tolerance = 1e-9)
+})
+
+test_that("optimize_structure_smc rejects malformed schedule", {
+  problem <- causal_problem(simulate_chain_dag(n = 50))
+  expect_error(
+    optimize_structure_smc(problem, n_steps = 4L,
+                            schedule = c(0.1, 0.5, 1.0)),
+    "length"
+  )
+  expect_error(
+    optimize_structure_smc(problem, n_steps = 4L,
+                            schedule = c(0.1, 0.5, 1.0, 1.0, 0.9)),
+    "increase"
+  )
+  expect_error(
+    optimize_structure_smc(problem, n_steps = 4L,
+                            schedule = c(0, 0.5, 1.0, 1.0, 0.5)),
+    "increase"
+  )
+})
+
+test_that("optimize_structure_smc records the schedule on the result", {
+  withr::with_seed(11, {
+    problem <- causal_problem(simulate_chain_dag(n = 100))
+    result <- optimize_structure_smc(problem, n_particles = 4L, n_steps = 5L)
+  })
+  expect_length(result$schedule, 6L)
+  expect_equal(result$schedule[1], 0)
+  expect_equal(result$schedule[6], 1)
+})
+
+test_that("structure_marginal weights features by particle weights", {
+  # Hand-construct a minimal smc_result with two particles and known weights
+  fake <- base::structure(
+    list(
+      particles = list(
+        list(value = 1),
+        list(value = 3)
+      ),
+      weights = c(0.25, 0.75),
+      log_weights = log(c(0.25, 0.75)),
+      schedule = c(0, 1)
+    ),
+    class = c("smc_result", "optimization_result")
+  )
+  out <- structure_marginal(fake, function(p) p$value)
+  # 0.25 * 1 + 0.75 * 3 = 2.5
+  expect_equal(out, 2.5)
+})
+
+test_that("structure_marginal works on matrix-valued features", {
+  fake <- base::structure(
+    list(
+      particles = list(
+        list(M = matrix(1, 2, 2)),
+        list(M = matrix(3, 2, 2))
+      ),
+      weights = c(0.5, 0.5)
+    ),
+    class = c("smc_result", "optimization_result")
+  )
+  out <- structure_marginal(fake, function(p) p$M)
+  expect_equal(out, matrix(2, 2, 2))
+})
+
+test_that("edge_marginals returns a K x K matrix in [0, 1]", {
+  withr::with_seed(13, {
+    problem <- causal_problem(simulate_chain_dag(n = 200))
+    result <- optimize_structure_smc(problem,
+                                      n_particles = 8L, n_steps = 6L)
+  })
+
+  P <- edge_marginals(result)
+  expect_equal(dim(P), c(3L, 3L))
+  expect_true(all(P >= 0 & P <= 1))
+  expect_true(all(diag(P) == 0))  # diagonal forced to zero in causal_dag
+})
+
+test_that("edge_marginals on chain DAG concentrates on the truth", {
+  # On A -> B -> C with confound A -> C, the truth has 3 edges (A,B), (A,C), (B,C).
+  # SMC should give those three edges high marginal probability.
+  withr::with_seed(17, {
+    problem <- causal_problem(simulate_chain_dag(n = 500))
+    result <- optimize_structure_smc(problem,
+                                      n_particles = 16L, n_steps = 12L,
+                                      n_mutations_per_step = 2L)
+  })
+
+  P <- edge_marginals(result)
+  # The directed edges A -> B and B -> C in particular should be common
+  # (these are the "spine" of the chain).
+  expect_gt(P["A", "B"] + P["B", "C"], 0.5)
+})
+
+test_that("edge_marginals rejects non-causal_dag particles", {
+  fake <- base::structure(
+    list(
+      particles = list(list(x = 1)),
+      weights = 1
+    ),
+    class = c("smc_result", "optimization_result")
+  )
+  expect_error(edge_marginals(fake), "causal_dag")
+})

@@ -10,9 +10,8 @@ effective_sample_size(log_weights)
 \item{log_weights}{Normalised log-weights.}
 }
 \value{
-Numeric scalar.
+Numeric scalar in \verb{[1, length(log_weights)]}.
 }
 \description{
-\code{1 / sum(weights^2)} where \code{weights = exp(log_weights)} (assumed
-normalised). Returns a value in \verb{[1, n_particles]}.
+Effective sample size of a particle population
 }
