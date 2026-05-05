@@ -19,6 +19,12 @@
 #' @param model LLM model identifier (used only when `chat` is `NULL`).
 #' @param interactive If `TRUE`, prompts the user to accept/reject each
 #'   LLM-proposed refinement.
+#' @param local_move_kernel SMC mutation kernel. `"random"` (default)
+#'   uses [propose_skill_local_move()]: random Lambda flip or block swap.
+#'   `"llm"` uses [propose_skill_local_move_llm()] which asks the LLM
+#'   for a semantically grounded move (toggle one loading or merge two
+#'   skills). The LLM kernel is much slower but produces better-quality
+#'   moves; tradeoff is wall-clock time vs SMC mixing efficiency.
 #' @return A `structure_problem` of subclass `"skill_problem"`.
 #' @seealso [structure_problem()], [optimize_structure()]
 #' @export
@@ -26,7 +32,9 @@ skill_problem <- function(items, responses,
                           edge_prior = NULL,
                           chat = NULL,
                           model = "claude-sonnet-4-20250514",
-                          interactive = FALSE) {
+                          interactive = FALSE,
+                          local_move_kernel = c("random", "llm")) {
+  local_move_kernel <- match.arg(local_move_kernel)
   # Lazy chat: only created when an LLM-driven slot is first invoked. This
   # lets test code construct a skill_problem without touching the API.
   get_chat <- local({
@@ -105,7 +113,11 @@ skill_problem <- function(items, responses,
     },
 
     propose_local_move = function(structure, ...) {
-      propose_skill_local_move(structure)
+      if (local_move_kernel == "llm") {
+        propose_skill_local_move_llm(structure, get_chat(), items)
+      } else {
+        propose_skill_local_move(structure)
+      }
     },
 
     class = "skill_problem"
