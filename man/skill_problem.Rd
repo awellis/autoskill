@@ -10,7 +10,8 @@ skill_problem(
   edge_prior = NULL,
   chat = NULL,
   model = "claude-sonnet-4-20250514",
-  interactive = FALSE
+  interactive = FALSE,
+  local_move_kernel = c("random", "llm")
 )
 }
 \arguments{
@@ -28,6 +29,13 @@ the standard reflection system prompt.}
 
 \item{interactive}{If \code{TRUE}, prompts the user to accept/reject each
 LLM-proposed refinement.}
+
+\item{local_move_kernel}{SMC mutation kernel. \code{"random"} (default)
+uses \code{\link[=propose_skill_local_move]{propose_skill_local_move()}}: random Lambda flip or block swap.
+\code{"llm"} uses \code{\link[=propose_skill_local_move_llm]{propose_skill_local_move_llm()}} which asks the LLM
+for a semantically grounded move (toggle one loading or merge two
+skills). The LLM kernel is much slower but produces better-quality
+moves; tradeoff is wall-clock time vs SMC mixing efficiency.}
 }
 \value{
 A \code{structure_problem} of subclass \code{"skill_problem"}.
