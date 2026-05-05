@@ -104,6 +104,10 @@ skill_problem <- function(items, responses,
       )
     },
 
+    propose_local_move = function(structure, ...) {
+      propose_skill_local_move(structure)
+    },
+
     class = "skill_problem"
   )
 }
